@@ -29,6 +29,10 @@ aos::Error IAMClient::Init(const Config& config, aos::iam::certhandler::CertHand
             return AOS_ERROR_WRAP(aos::ErrorEnum::eInvalidArgument);
         }
 
+        LOG_DBG() << "Certificates loaded successfully>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>";
+        LOG_DBG() << "Cert URL: " << certInfo.mCertURL.CStr();
+        LOG_DBG() << "Key URL: " << certInfo.mKeyURL.CStr();
+
         mCredentials = GetTLSChannelCredentials(certInfo, config.mCACert.c_str(), certLoader, cryptoProvider);
     }
 

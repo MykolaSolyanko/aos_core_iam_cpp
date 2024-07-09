@@ -122,6 +122,10 @@ aos::Error IAMServer::Init(const Config& config, certhandler::CertHandlerItf& ce
                 return AOS_ERROR_WRAP(err);
             }
 
+            LOG_DBG() << "IAM Server>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>";
+            LOG_DBG() << "IAM server certificate: " << certInfo.mCertURL.CStr();
+            LOG_DBG() << "IAM server key: " << certInfo.mKeyURL.CStr();
+
             publicOpt    = GetTLSServerCredentials(certInfo, certLoader, cryptoProvider);
             protectedOpt = GetMTLSServerCredentials(certInfo, config.mCACert.c_str(), certLoader, cryptoProvider);
         } else {
