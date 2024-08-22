@@ -65,22 +65,36 @@ aos::Error NodeStreamHandler::HandleStream()
 
         const auto messageCase = outgoing.IAMOutgoingMessage_case();
         if (messageCase == iamproto::IAMOutgoingMessages::IAMOutgoingMessageCase::IAMOUTGOINGMESSAGE_NOT_SET) {
+            LOG_ERR() << "Received message with no type";
+
             continue;
         }
 
         if (outgoing.has_node_info()) {
+            LOG_DBG() << "Handle node info";
+
             if (err = HandleNodeInfo(outgoing.node_info()); !err.IsNone()) {
                 err = AOS_ERROR_WRAP(err);
 
                 break;
             }
+
+            // Skip further processing for node info message.
         }
 
         std::lock_guard lock {mMutex};
 
         try {
+            LOG_DBG() << "Find pending message: type=" << messageCase;
+
             if (auto it = mPendingMessages.find(messageCase); it != mPendingMessages.end()) {
+                LOG_DBG() << "Set pending message: type=" << messageCase;
+
                 it->second.set_value(std::move(outgoing));
+
+                LOG_DBG() << "Erase pending message: type=" << messageCase;
+            } else {
+                LOG_ERR() << "Received unexpected message: type=" << messageCase;
             }
         } catch (const std::exception& e) {
             err = AOS_ERROR_WRAP(aos::Error(aos::ErrorEnum::eFailed, e.what()));
@@ -239,9 +253,13 @@ grpc::Status NodeStreamHandler::CreateKey(const iamproto::CreateKeyRequest* requ
         return utils::ConvertAosErrorToGrpcStatus(err);
     }
 
+    LOG_DBG() << "Check create key response";
+
     if (!outgoing.has_create_key_response()) {
         return grpc::Status::CANCELLED;
     }
+
+    LOG_DBG() << "Copy create key response";
 
     response->CopyFrom(outgoing.create_key_response());
 
@@ -277,6 +295,8 @@ grpc::Status NodeStreamHandler::ApplyCert(const iamproto::ApplyCertRequest* requ
 aos::Error NodeStreamHandler::SendMessage(const iamproto::IAMIncomingMessages& request,
     iamproto::IAMOutgoingMessages& response, const std::chrono::seconds responseTimeout)
 {
+    LOG_DBG() << "Send message: type=" << request.IAMIncomingMessage_case();
+
     if (mIsClosed) {
         return AOS_ERROR_WRAP(aos::Error(aos::ErrorEnum::eFailed, "Stream is closed"));
     }
@@ -284,6 +304,8 @@ aos::Error NodeStreamHandler::SendMessage(const iamproto::IAMIncomingMessages& r
     if (!mStream->Write(request)) {
         return AOS_ERROR_WRAP(aos::Error(aos::ErrorEnum::eFailed, "Failed to send message"));
     }
+
+    LOG_DBG() << "Wait for response: type=" << request.IAMIncomingMessage_case();
 
     try {
         std::promise<iamproto::IAMOutgoingMessages> promise;
@@ -293,6 +315,8 @@ aos::Error NodeStreamHandler::SendMessage(const iamproto::IAMIncomingMessages& r
             std::lock_guard lock {mMutex};
 
             mPendingMessages[response.IAMOutgoingMessage_case()] = std::move(promise);
+
+            LOG_DBG() << "Pending messages: count=" << mPendingMessages.size();
         }
 
         if (responseFuture.wait_for(responseTimeout) != std::future_status::ready) {
@@ -300,6 +324,8 @@ aos::Error NodeStreamHandler::SendMessage(const iamproto::IAMIncomingMessages& r
         }
 
         response = responseFuture.get();
+
+        LOG_DBG() << "Received response: msg=" << response.DebugString().c_str();
     } catch (const std::exception& e) {
         return AOS_ERROR_WRAP(aos::Error(aos::ErrorEnum::eRuntime, e.what()));
     }
